@@ -20,13 +20,12 @@
 #include "partition_functions.h"
 #include "update_particle.h"
 extern arma::mat A_block;
-extern double lambda;
-extern double xi;
+
 
 using namespace std;
 
 //void update_w(vector<LPPartition> particle_set, vector<double>& w, mat Y, mat X, mat A_block, double rho, double a, double b, double alpha, double nu, double eta ){
-void update_w(std::vector<LPPartition> particle_set, std::vector<double>& w){
+void update_w(std::vector<LPPartition> particle_set, std::vector<double>& w, double lambda, double xi){
   // First we identify the unik partitions
   double max_log_post = 0.0;
   double tmp_log_post = 0.0;
@@ -121,7 +120,7 @@ void update_w(std::vector<LPPartition> particle_set, std::vector<double>& w){
 //  std::cout << "p_star: " ;
   for(int ul = 0; ul < num_unik_particles; ul++){
     tmp_log_post = log_post[ul] - max_log_post;
-    tmp_p_star = exp(1/lambda * tmp_log_post); // introduce the 1/lambda
+    tmp_p_star = exp(1.0/lambda * tmp_log_post); // introduce the 1/lambda
     tmp_norm += tmp_p_star;
     p_star[ul] = tmp_p_star;
 //  std::cout << p_star[ul] << "  " ;
@@ -150,7 +149,7 @@ void update_w(std::vector<LPPartition> particle_set, std::vector<double>& w){
 
 
 //void update_particle(LPPartition candidate, int current_l, vector<LPPartition> particle_set, vector<double> w, mat Y, mat X, mat A_block, double rho, double a, double b, double alpha, double nu, double eta){
-void update_particle(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w){
+void update_particle(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w, double lambda, double xi){
   LPPartition max_candidate;
   LPPartition tmp_candidate;
   try{
@@ -190,11 +189,101 @@ void update_particle(LPPartition candidate, int current_l, std::vector<LPPartiti
   std::vector<int> neighboring_clusters; // holds the labels of clusters adjacent to block-group i
   int neighbor_counter = 0;
   // Initialize stuff for the merge candidates
-  mat tmp_A;
+  mat tmp_A, tmp_A1, tmp_A2;
   bool adj_clusters;
-   
+  // First try to create islands - 5% in each cluster
+  for(int k = 0; k < particle_set[current_l]->K; k++){
+    // find which elements are in the top - bottom 5%
+    if(particle_set[current_l]->cluster_config[k] > 1){
+      double* beta_hat_copy = new double[ particle_set[current_l]->cluster_config[k] ];
+      for(int i = 0; i < particle_set[current_l]->cluster_config[k]; i++){
+        beta_hat_copy[i] = particle_set[current_l]->beta_hat[ particle_set[current_l]->clusters[k][i] ];
+      }
+      sort(beta_hat_copy, beta_hat_copy + particle_set[current_l]->cluster_config[k]);
+      int threshold = (int) ceil(particle_set[current_l]->cluster_config[k] * 0.05);
+      int *index_topbottom = new int[2*threshold];
+      int count = 0;
+      for(int i = 0; i < threshold; i++){
+        for(int j = 0; j < particle_set[current_l]->cluster_config[k]; j++){
+          if(particle_set[current_l]->beta_hat[ particle_set[current_l]->clusters[k][j] ] == beta_hat_copy[i]){
+            index_topbottom[count] = particle_set[current_l]->clusters[k][j];
+            count ++;
+          }
+        }
+        for(int j = 0; j < particle_set[current_l]->cluster_config[k]; j++){
+          if(particle_set[current_l]->beta_hat[ particle_set[current_l]->clusters[k][j] ] == beta_hat_copy[(particle_set[current_l]->cluster_config[k])-1-i]){
+            index_topbottom[count] = particle_set[current_l]->clusters[k][j];
+            count ++;
+          }
+        }
+      }
+      // index_topbottom contains the index in the whole city like {1, ..255}, not the index in the cluster
+      delete[] beta_hat_copy;
+
+      for(int c = 0; c < 2*threshold; c++){
+        int i = index_topbottom[c];
+        // split_k = particle_set[current_l]->cluster_assignment[i];
+        split_k = k;
+        // if(particle_set[current_l]->cluster_config[split_k] > 1){ // already checked before
+        delete tmp_candidate; // delete the old value of tmp_candidate .. i can either use Copy_Partition or do a delete[] and new call
+
+        try{
+          tmp_candidate = new Partition(particle_set[current_l]);
+        }
+        catch(const std::bad_alloc& e){
+          cout << "######## EXCEPTION 3 ########"  << e.what() << endl;
+        }
+        size1 = tmp_candidate->cluster_config[split_k] - 1;
+        size2 = 1;
+        delete[] new_cluster1;
+        delete[] new_cluster2;
+
+        try{
+          new_cluster1 = new int[size1];
+          new_cluster2 = new int[size2];
+        }
+        catch(const std::bad_alloc& e){
+          cout << "######## EXCEPTION 12b ########"  << e.what() << endl;
+        }
+
+        new_cluster2[0] = i;
+        int counter = 0;
+        for(int ii = 0; ii < tmp_candidate->cluster_config[split_k]; ii++){
+          if(tmp_candidate->clusters[split_k][ii] != i){
+            new_cluster1[counter] = tmp_candidate->clusters[split_k][ii];
+            counter++;
+          }
+        }
+        // now actually perform the split
+        //    tmp_candidate->Split(split_k, new_cluster1, new_cluster2, size1, size2, Y, X, A_block, rho, a, b, alpha, nu, eta);
+        tmp_candidate->Split(split_k, new_cluster1, new_cluster2, size1, size2);
+        // tmp_candidate->Print_Partition_Short();
+        tmp_candidate->Modify(split_k);
+        tmp_objective = w[current_l]*total_log_post(tmp_candidate) + lambda * Entropy(current_l, tmp_candidate, particle_set, w) + xi * VI_DPP(current_l, tmp_candidate, particle_set);
+        //    std::cout << "[get_local]: i = " << i << " max_obj = " << setprecision(8) << max_objective << " tmp_obj = " << setprecision(8) << tmp_objective << std::endl;
+        if(tmp_objective > max_objective){
+          //max_candidate->Copy_Partition(tmp_candidate);
+
+          delete max_candidate;
+          try{
+            max_candidate = new Partition(tmp_candidate);
+          }
+          catch(const std::bad_alloc& e){
+            cout << "######## EXCEPTION 4 ########"  << e.what() << endl;
+          }
+          max_objective = tmp_objective;
+          //    std::cout << "max_obj is now: " << max_objective << std::endl;
+          //max_candidate->Print_Partition();
+          // }
+        }
+      }
+
+      delete[] index_topbottom;
+    }
+  }
     // First try to create islands
   //  std::cout<< "[update_particle] : Trying island candidates now" << std::endl;
+  /*
   for(int i = 0; i < particle_set[current_l]->nObs; i++){
     split_k = particle_set[current_l]->cluster_assignment[i];
     delete tmp_candidate; // delete the old value of tmp_candidate .. i can either use Copy_Partition or do a delete[] and new call
@@ -251,7 +340,7 @@ void update_particle(LPPartition candidate, int current_l, std::vector<LPPartiti
       }
     }
   }
-    
+    */
     // Now try to move border elements
     //std::cout<< "[update_particle] : Trying border candidates now" << std::endl;
   for(int i = 0; i < particle_set[current_l]->nObs; i++){
@@ -378,97 +467,258 @@ void update_particle(LPPartition candidate, int current_l, std::vector<LPPartiti
     // Now do the heavy lifting: we will loop over the clusters, run spectral clustering on the beta_hat's within the cluster, and propose various split and merge candidates
     
     for(int k = 0; k < particle_set[current_l]->K; k++){
-      if(particle_set[current_l]->cluster_config[k] > 1){ // only makes sense to split clusters 
-        int n = particle_set[current_l]->nObs;
-        int n_cl = particle_set[current_l]->cluster_config[k];
-        arma::mat A_block_cluster = Submatrix(A_block, n_cl, n_cl, particle_set[current_l]->clusters[k], particle_set[current_l]->clusters[k]);
-        double* beta_hat_cluster = new double[n_cl];
-        if(beta_hat_cluster == nullptr) cout << "######## EXCEPTION 5b ########" << endl;
-        for(int i = 0; i < n_cl; i++){
-          beta_hat_cluster[i] = particle_set[current_l]->beta_hat[ particle_set[current_l]->clusters[k][i] ];
+    if(particle_set[current_l]->cluster_config[k] > 2){ // only makes sense to split clusters
+      int n = particle_set[current_l]->nObs;
+      int n_cl = particle_set[current_l]->cluster_config[k];
+      arma::mat A_block_cluster = Submatrix(A_block, n_cl, n_cl, particle_set[current_l]->clusters[k], particle_set[current_l]->clusters[k]);
+      double* beta_hat_cluster = new double[n_cl];
+      if(beta_hat_cluster == nullptr) cout << "######## EXCEPTION 5b ########" << endl;
+      for(int i = 0; i < n_cl; i++){
+        beta_hat_cluster[i] = particle_set[current_l]->beta_hat[ particle_set[current_l]->clusters[k][i] ];
+      }
+      arma::mat dist = Distance_matrix(beta_hat_cluster, n_cl);
+      arma::vec beta_hat_cluster_vec(n_cl);
+      for(int i = 0; i < n_cl; i++){
+        beta_hat_cluster_vec(i) = beta_hat_cluster[i];
+      }
+      delete[] beta_hat_cluster;
+      arma::mat beta_sim = exp(- square(dist) / (2 * arma::var(beta_hat_cluster_vec)));
+      arma::mat diag_ncl(n_cl,n_cl,fill::eye);
+      arma::mat W_beta_cl =  diag_ncl + beta_sim % A_block_cluster;
+      arma::mat Dinv_sqrt = arma::diagmat(1/sqrt(arma::sum(W_beta_cl, 1)));
+      arma::mat L = diag_ncl - Dinv_sqrt * W_beta_cl * Dinv_sqrt;
+      arma::vec eigval; // the smallest eigenvalues are the first two
+      arma::mat eigvec;
+      arma::eig_sym(eigval, eigvec, L);
+      arma::mat U = eigvec.cols(0,1);
+      U = arma::diagmat(1/sqrt(arma::sum(arma::square(U), 1))) * U;
+      arma::mat means;
+      // kmeans(means, U.t(), 2, random_subset, 10, false);
+      bool status = arma::kmeans(means, U.t(), 2, random_subset, 10, false);
+      if(status == false){
+        cout << "clustering failed" << endl;
+        cout << particle_set[current_l]->cluster_config[k] << endl;
+        for(int i = 0; i < particle_set[current_l]->cluster_config[k]; i++){
+          cout << particle_set[current_l]->clusters[k][i] << " ";
         }
-        arma::mat dist = Distance_matrix(beta_hat_cluster, n_cl);
-        arma::vec beta_hat_cluster_vec(n_cl);
-        for(int i = 0; i < n_cl; i++){
-          beta_hat_cluster_vec(i) = beta_hat_cluster[i];
+        cout << endl;
+        cout << U << endl;
+      }
+      int * membership = which_is_nearest(means, U.t());
+      int *index1 = new int[n_cl];
+      if(index1 == nullptr) cout << "######## EXCEPTION 6b ########" << endl;
+      int *index2 = new int[n_cl];
+      if(index2 == nullptr) cout << "######## EXCEPTION 7b ########" << endl;
+      int n1 = 0, n2 = 0;
+      for(int i = 0; i < n_cl; i++){
+        if(membership[i] == 0){
+          index1[n1] = particle_set[current_l]->clusters[k][i];
+          n1++;
+        } else {
+          index2[n2] = particle_set[current_l]->clusters[k][i];
+          n2++;
         }
-        delete[] beta_hat_cluster;
-        arma::mat beta_sim = exp(- square(dist) / (2 * arma::var(beta_hat_cluster_vec)));
-        arma::mat diag_ncl(n_cl,n_cl,fill::eye);
-        arma::mat W_beta_cl =  diag_ncl + beta_sim % A_block_cluster; 
-        arma::mat Dinv_sqrt = arma::diagmat(1/sqrt(arma::sum(W_beta_cl, 1)));
-        arma::mat L = diag_ncl - Dinv_sqrt * W_beta_cl * Dinv_sqrt;
-        arma::vec eigval; // the smallest eigenvalues are the first two
-        arma::mat eigvec; 
-        arma::eig_sym(eigval, eigvec, L);
-        arma::mat U = eigvec.cols(0,1); 
-        U = arma::diagmat(1/sqrt(arma::sum(arma::square(U), 1))) * U;
-        arma::mat means;
-        // kmeans(means, U.t(), 2, random_subset, 10, false);
-        bool status = arma::kmeans(means, U.t(), 2, random_subset, 10, false);
-        if(status == false)
-          cout << "clustering failed" << endl;
-        int * membership = which_is_nearest(means, U.t());
-        int *index1 = new int[n_cl];
-        if(index1 == nullptr) cout << "######## EXCEPTION 6b ########" << endl;
-        int *index2 = new int[n_cl];
-        if(index2 == nullptr) cout << "######## EXCEPTION 7b ########" << endl;
-        int n1 = 0, n2 = 0;
+      }
+      if(n1 == 0 || n2 == 0){
+        cout << "Clustering: one list is empty!" << endl;
+        cout << U << endl;
         for(int i = 0; i < n_cl; i++){
-          if(membership[i] == 0){
-            index1[n1] = particle_set[current_l]->clusters[k][i];
-            n1++;
-          } else {
-            index2[n2] = particle_set[current_l]->clusters[k][i];
-            n2++;
-          }
+          cout << membership[i] << " ";
         }
-        delete[] membership;
-        
-        // we now know how to split cluster k
-        // first we initialize the tmp_candidate
-        delete tmp_candidate;
+        cout << endl;
+        cout << means << endl;
+      }
+      delete[] membership;
+
+      // we now know how to split cluster k
+      // first we initialize the tmp_candidate
+      delete tmp_candidate;
+      try{
+        tmp_candidate = new Partition(particle_set[current_l]);
+      }
+      catch(const std::bad_alloc& e){
+        cout << "######## EXCEPTION 9 ########"  << e.what() << endl;
+      }
+
+
+      tmp_objective = 0.0;
+      // now just try splitting
+      tmp_candidate->Split(k, index1, index2, n1, n2);
+      tmp_objective = w[current_l]*total_log_post(tmp_candidate) + lambda * Entropy(current_l, tmp_candidate, particle_set, w) + xi * VI_DPP(current_l, tmp_candidate, particle_set);
+      if(tmp_objective > max_objective){
+        delete max_candidate;
         try{
-          tmp_candidate = new Partition(particle_set[current_l]);
+          max_candidate = new Partition(tmp_candidate);
         }
         catch(const std::bad_alloc& e){
-          cout << "######## EXCEPTION 9 ########"  << e.what() << endl;
+          cout << "######## EXCEPTION 10 ########"  << e.what() << endl;
         }
+        max_objective = tmp_objective;
+      }
 
+      if(particle_set[current_l]->K > 1){
+        arma::vec beta_cluster1_vec(n1);
+        arma::vec beta_cluster2_vec(n2);
+        for(int i = 0; i < n1; i++){
+          beta_cluster1_vec(i) = particle_set[current_l]->beta_hat[ index1[i] ];
+        }
+        for(int i = 0; i < n2; i++){
+          beta_cluster2_vec(i) = particle_set[current_l]->beta_hat[ index2[i] ];
+        }
+        double beta_bar1 = arma::mean(beta_cluster1_vec);
+        double beta_bar2 = arma::mean(beta_cluster2_vec);
 
-        tmp_objective = 0.0;
-        // now just try splitting
-        tmp_candidate->Split(k, index1, index2, n1, n2);
-        tmp_objective = w[current_l]*total_log_post(tmp_candidate) + lambda * Entropy(current_l, tmp_candidate, particle_set, w) + xi*VI_DPP(current_l, tmp_candidate, particle_set);
-        if(tmp_objective > max_objective){
-          delete max_candidate;
+        std::vector<int> adj_clusters1;
+        std::vector<int> adj_clusters2;
+
+        for(int kk = 0; kk < particle_set[current_l]->K; kk++){
+          if(kk != k){
+            tmp_A1 = Submatrix(A_block, n1, particle_set[current_l]->cluster_config[kk], index1, particle_set[current_l]->clusters[kk]);
+            tmp_A2 = Submatrix(A_block, n2, particle_set[current_l]->cluster_config[kk], index2, particle_set[current_l]->clusters[kk]);
+            if(any(vectorise(tmp_A1 == 1.0)))
+              adj_clusters1.push_back(kk);
+            if(any(vectorise(tmp_A2 == 1.0)))
+              adj_clusters2.push_back(kk);
+          }
+        }
+        // cout << "clusters adjacent:" << endl;
+        // for(int i = 0; i < adj_clusters1.size(); i++) {
+        //   cout << adj_clusters1[i] << ' ';
+        // }
+        // cout << endl;
+        // for(int i = 0; i < adj_clusters2.size(); i++) {
+        //   cout << adj_clusters2[i] << ' ';
+        // }
+        // cout << endl;
+        int jstar1;
+        int jstar2;
+        // keep index2 by itself (and labelled cluster K) and merge index1 into closest existing cluster that is adjacent to it and has similar average beta-hat (requires identifying k_star_1)
+        if(adj_clusters1.size() > 0) {
+          double tmp_min = abs(beta_bar(particle_set[current_l], adj_clusters1[0])-beta_bar1);
+          jstar1 = adj_clusters1[0];
+          double tmp;
+          for(int ii = 1; ii < adj_clusters1.size(); ii++){
+            tmp = abs(beta_bar(particle_set[current_l], adj_clusters1[ii])-beta_bar1);
+            if(tmp < tmp_min){
+              jstar1 = adj_clusters1[ii];
+            }
+          }
+          // cout << " jstar1 " << jstar1 << endl;
+          // now we know we should try to merge index1 with tmp_argmin
+          delete tmp_candidate;
           try{
-            max_candidate = new Partition(tmp_candidate);
+            tmp_candidate = new Partition(particle_set[current_l]);
           }
           catch(const std::bad_alloc& e){
-            cout << "######## EXCEPTION 10 ########"  << e.what() << endl;
+            cout << "######## EXCEPTION 7 ########"  << e.what() << endl;
           }
-          max_objective = tmp_objective;
+          tmp_candidate->Split(k, index1, index2, n1, n2); // now cluster1 is still k, cluster2 is K
+          tmp_candidate->Merge(k,jstar1);
+          // cout << "SPLITMERGE1 CANDIDATE" << endl;
+          // tmp_candidate->Print_Partition_Short();
+          tmp_objective = w[current_l]*total_log_post(tmp_candidate) + lambda * Entropy(current_l, tmp_candidate, particle_set, w) + xi * VI_DPP(current_l, tmp_candidate, particle_set);
+          // cout << "tmp_objective " << tmp_objective << " max_objective" << max_objective << endl;
+          if(tmp_objective > max_objective){
+            delete max_candidate;
+            try{
+              max_candidate = new Partition(tmp_candidate);
+            }
+            catch(const std::bad_alloc& e){
+              cout << "######## EXCEPTION 8 ########"  << e.what() << endl;
+            }
+            max_objective = tmp_objective;
+          }
         }
-        // now let's try splitting and merging
-        // First split and merge: keep index1 by itself (and labelled cluster k) and merge index2 into the closest existing cluster that is adjacent to it and has similar average beta-hat (requires identify k_star_2)
-        // Second split and merge: keep index2 by itself (and labelled cluster K) and merge index1 into closest existing cluster that is adjacent to it and has similar average beta-hat (requires identifying k_star_1)
-        // Third split and merge: merge both index1 and index2 into existing clusters (so long as they're not merging into the same one!!)
-
-        delete[] index1;
-        delete[] index2;
+        // keep index1 by itself (and labelled cluster k) and merge index2 into the closest existing cluster that is adjacent to it and has similar average beta-hat (requires identify k_star_2)
+        if(adj_clusters2.size() > 0) {
+          double tmp_min = abs(beta_bar(particle_set[current_l], adj_clusters2[0])-beta_bar2);
+          jstar2 = adj_clusters2[0];
+          double tmp;
+          for(int ii = 1; ii < adj_clusters2.size(); ii++){
+            tmp = abs(beta_bar(particle_set[current_l], adj_clusters2[ii])-beta_bar2);
+            if(tmp < tmp_min){
+              jstar2 = adj_clusters2[ii];
+            }
+          }
+          // cout << " jstar2 " << jstar2 << endl;
+          // now we know we should try to merge index2 with tmp_argmin
+          delete tmp_candidate;
+          try{
+            tmp_candidate = new Partition(particle_set[current_l]);
+          }
+          catch(const std::bad_alloc& e){
+            cout << "######## EXCEPTION 7 ########"  << e.what() << endl;
+          }
+          tmp_candidate->Split(k, index1, index2, n1, n2); // now cluster1 is still k, cluster2 is K
+          tmp_candidate->Merge(particle_set[current_l]->K,jstar2);
+          // cout << "SPLITMERGE2 CANDIDATE" << endl;
+          // tmp_candidate->Print_Partition_Short();
+          tmp_objective = w[current_l]*total_log_post(tmp_candidate) + lambda * Entropy(current_l, tmp_candidate, particle_set, w) + xi * VI_DPP(current_l, tmp_candidate, particle_set);
+          // cout << "tmp_objective " << tmp_objective << " max_objective" << max_objective << endl;
+          if(tmp_objective > max_objective){
+            delete max_candidate;
+            try{
+              max_candidate = new Partition(tmp_candidate);
+            }
+            catch(const std::bad_alloc& e){
+              cout << "######## EXCEPTION 8 ########"  << e.what() << endl;
+            }
+            max_objective = tmp_objective;
+          }
+        }
+        // merge both index1 and index2 into existing clusters (so long as they're not merging into the same one!!)
+        // cout << "splitmerge3 now" << endl;
+        if(adj_clusters1.size() > 0 && adj_clusters2.size() > 0){
+          if(jstar1 != jstar2){
+            delete tmp_candidate;
+            try{
+              tmp_candidate = new Partition(particle_set[current_l]);
+            }
+            catch(const std::bad_alloc& e){
+              cout << "######## EXCEPTION 7 ########"  << e.what() << endl;
+            }
+            tmp_candidate->Split(k, index1, index2, n1, n2); // now cluster1 is still k, cluster2 is K
+            // the order matters!
+            tmp_candidate->Merge(particle_set[current_l]->K,jstar2);
+            tmp_candidate->Merge(k,jstar1);
+            // cout << "SPLITMERGE3 CANDIDATE" << endl;
+            // tmp_candidate->Print_Partition_Short();
+            tmp_objective = w[current_l]*total_log_post(tmp_candidate) + lambda * Entropy(current_l, tmp_candidate, particle_set, w) + xi * VI_DPP(current_l, tmp_candidate, particle_set);
+            // cout << "tmp_objective " << tmp_objective << " max_objective" << max_objective << endl;
+            if(tmp_objective > max_objective){
+              delete max_candidate;
+              try{
+                max_candidate = new Partition(tmp_candidate);
+              }
+              catch(const std::bad_alloc& e){
+                cout << "######## EXCEPTION 8 ########"  << e.what() << endl;
+              }
+              max_objective = tmp_objective;
+            }
+          }
+        }
       }
+      // now let's try splitting and merging
+      // First split and merge: keep index1 by itself (and labelled cluster k) and merge index2 into the closest existing cluster that is adjacent to it and has similar average beta-hat (requires identify k_star_2)
+      // Second split and merge: keep index2 by itself (and labelled cluster K) and merge index1 into closest existing cluster that is adjacent to it and has similar average beta-hat (requires identifying k_star_1)
+      // Third split and merge: merge both index1 and index2 into existing clusters (so long as they're not merging into the same one!!)
+
+      delete[] index1;
+      delete[] index2;
     }
+  }
+  max_candidate->Print_Partition();
+
+  candidate->Copy_Partition(max_candidate);
+  delete[] new_cluster1;
+  delete[] new_cluster2;
+  delete max_candidate;
+  delete tmp_candidate;
+
+// catch(const std::bad_alloc& e){
+//  cout << "----------------EXCEPTION IN UPDATE PARTICLE: " << e.what() << endl;
+// }
   
-    candidate->Copy_Partition(max_candidate);
-    delete[] new_cluster1;
-    delete[] new_cluster2;
-    delete max_candidate;
-    delete tmp_candidate;
-  
-  // catch(const std::bad_alloc& e){
-  //  cout << "----------------EXCEPTION IN UPDATE PARTICLE: " << e.what() << endl;
-  // }
-  
+
 }
 

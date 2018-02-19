@@ -6,6 +6,7 @@
  */
 
 int Partition_Equal(Partition *partition1, Partition *partition2);
+double beta_bar(Partition *partition, int k);
 double Entropy(unsigned current_l, Partition* candidate_particle, std::vector<LPPartition> particle_set, std::vector<double> w);
 double total_log_post(LPPartition partition);
 double total_log_like(LPPartition partition);
@@ -24,10 +25,10 @@ double VI_DPP(unsigned current_l, Partition* candidate_particle, std::vector<LPP
 //void get_border(LPPartition candidate, int current_l, vector<LPPartition> particle_set, vector<double> w, mat Y, mat X, mat A_block, double rho, double a, double b, double alpha, double nu, double eta);
 //void get_merge(LPPartition candidate, int current_l, vector<LPPartition> particle_set, vector<double> w, mat Y, mat X, mat A_block, double rho, double a, double b, double alpha, double nu, double eta);
 
-void get_island(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w);
-void get_border(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w);
-void get_merge(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w);
-void get_split(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w);
+void get_island(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w, double lambda, double xi);
+void get_border(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w, double lambda, double xi);
+void get_merge(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w, double lambda, double xi);
+void get_split(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w, double lambda, double xi);
 
 
 

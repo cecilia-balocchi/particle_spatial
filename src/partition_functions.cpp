@@ -20,8 +20,7 @@
 #include "partition.h"
 #include "various_functions.h"
 using namespace std;
-extern double lambda;
-extern double xi;
+
 
 // None of the methods here actually need any of this data
 // instead, they call methods which use the data and we already have
@@ -53,6 +52,14 @@ int Partition_Equal(Partition *partition1, Partition *partition2){
 	if(flag == 0) break;
   }
   return flag;
+}
+
+double beta_bar(Partition *partition, int k){
+  arma::vec beta_cl(partition->cluster_config[k]);
+  for(int i = 0; i < partition->cluster_config[k]; i++){
+    beta_cl(i) = partition->beta_hat[ partition->clusters[k][i] ];
+  }
+  return arma::mean(beta_cl);
 }
 
 // function to compute entropy
@@ -256,9 +263,11 @@ double VI_DPP(unsigned current_l, Partition* candidate_particle, std::vector<LPP
   unsigned L = particle_set.size();
   // need to loop over to extract the unique partitions
   std::vector<LPPartition> unik_particles;
-  std::vector<double> p_star;
+  std::vector<int> particle_counts;
+
 
   unik_particles.push_back(candidate_particle);
+  particle_counts.push_back(1);
   int num_unik_particles = 1;
   int counter = 0;
   for(unsigned l = 0; l < L; l++){ // loop over current particle set
@@ -269,6 +278,7 @@ double VI_DPP(unsigned current_l, Partition* candidate_particle, std::vector<LPP
 	    // l^th partition is equal to the ul^th unique partition
 	    //std::cout << "particle " << l << " is equal to unik particle " << ul << std::endl;
 	    //p_star[ul] += w[l]; // update p_star
+	      particle_counts[ul]++;
 	      break;
         } else {
 	      counter++;
@@ -276,23 +286,29 @@ double VI_DPP(unsigned current_l, Partition* candidate_particle, std::vector<LPP
 	  }
 	  if(counter == num_unik_particles){
 	    unik_particles.push_back(particle_set[l]);
+	    particle_counts.push_back(1);
 	    num_unik_particles++;
       }
     }
   }
+  if(num_unik_particles == 1){
+	return(-pow(10.0, 3.0));
+  } else{
 
-  mat kernel(num_unik_particles, num_unik_particles, fill::zeros);
-  double dist = 0.0;
-  double kernel_log_det = 0.0;
-  double kernel_log_det_sgn = 0.0;
-  for(int l = 0; l < num_unik_particles; l++){
-	for(int ll = 0; ll < num_unik_particles; ll++){
-	  dist = VI_Loss(unik_particles[l], unik_particles[ll]);
-	  kernel(l,ll) = exp(-1.0 * dist); // large distance means the particles are not similar, hence entry in kernel matrix should be small
+	mat kernel(num_unik_particles, num_unik_particles, fill::zeros);
+	double dist = 0.0;
+	double kernel_log_det = 0.0;
+	double kernel_log_det_sgn = 0.0;
+	for(int l = 0; l < num_unik_particles; l++){
+	  for(int ll = 0; ll < num_unik_particles; ll++){
+		dist = VI_Loss(unik_particles[l], unik_particles[ll]);
+		//kernel(l,ll) = exp(-1.0 * dist); // large distance means the particles are not similar, hence entry in kernel matrix should be small
+		kernel(l,ll) = exp(-1.0 * dist * particle_counts[l] * particle_counts[ll]);
+	  }
 	}
+	log_det(kernel_log_det, kernel_log_det_sgn, kernel);
+	return(kernel_log_det);
   }
-  log_det(kernel_log_det, kernel_log_det_sgn, kernel);
-  return(kernel_log_det);
 /*
   double dist = 0.0;
   if(num_unik_particles == 1){
@@ -313,7 +329,7 @@ double VI_DPP(unsigned current_l, Partition* candidate_particle, std::vector<LPP
 // get Local candidate
 //
 //void get_island(LPPartition candidate, int current_l, vector<LPPartition> particle_set, vector<double> w, mat Y, mat X, mat A_block, double rho, double a, double b, double alpha, double nu, double eta){
-void get_island(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w){
+void get_island(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w, double lambda, double xi){
 
   LPPartition max_candidate = new Partition(particle_set[current_l]); // holds the running "best local candidate"
   double max_objective = 0.0; // holds the objective value of the "best local candidate"
@@ -441,7 +457,7 @@ void get_island(LPPartition candidate, int current_l, std::vector<LPPartition> p
   delete[] new_cluster2;
 }
 //void get_border(LPPartition candidate, int current_l, vector<LPPartition> particle_set, vector<double> w, mat Y, mat X, mat A_block, double rho, double a, double b, double alpha, double nu, double eta){
-void get_border(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w){
+void get_border(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w, double lambda, double xi){
 
   LPPartition max_candidate = new Partition(particle_set[current_l]); // holds the running "best local candidate"
   double max_objective = 0.0; // holds the objective value of the "best local candidate"
@@ -619,7 +635,7 @@ void get_border(LPPartition candidate, int current_l, std::vector<LPPartition> p
 
 
 //void get_merge(LPPartition candidate, int current_l, vector<LPPartition> particle_set, vector<double> w, mat Y, mat X, mat A_block, double rho, double a, double b, double alpha, double nu, double eta){
-void get_merge(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w){
+void get_merge(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w, double lambda, double xi){
 
   LPPartition max_candidate = new Partition(particle_set[current_l]); // holds the running "best local candidate"
   double max_objective = 0.0; // holds the objective value of the "best local candidate"
@@ -706,7 +722,7 @@ void get_merge(LPPartition candidate, int current_l, std::vector<LPPartition> pa
   delete tmp_candidate;
 }
 // Split candidates
-void get_split(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w){
+void get_split(LPPartition candidate, int current_l, std::vector<LPPartition> particle_set, std::vector<double> w, double lambda, double xi){
   LPPartition max_candidate = new Partition(particle_set[current_l]); // holds the running "best local candidate"
   double max_objective = 0.0; // holds the objective value of the "best local candidate"
 
