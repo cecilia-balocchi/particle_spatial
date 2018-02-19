@@ -303,7 +303,7 @@ double VI_DPP(unsigned current_l, Partition* candidate_particle, std::vector<LPP
 	  for(int ll = 0; ll < num_unik_particles; ll++){
 		dist = VI_Loss(unik_particles[l], unik_particles[ll]);
 		//kernel(l,ll) = exp(-1.0 * dist); // large distance means the particles are not similar, hence entry in kernel matrix should be small
-		kernel(l,ll) = exp(-1.0 * dist * particle_counts[l] * particle_counts[ll]);
+		kernel(l,ll) = exp(-1.0 * dist /( particle_counts[l] * particle_counts[ll]));
 	  }
 	}
 	log_det(kernel_log_det, kernel_log_det_sgn, kernel);
