@@ -1041,6 +1041,105 @@ void Partition::Find_Splits(int cluster_id){
 
 }
 
+void Partition::K_Splits(int k){
+  arma::vec beta_hat(nObs); // an armadillo vector holding the beta-hats
+  for(int i = 0; i < nObs; i++){
+    beta_hat(i) = beta_hat[i];
+  }
+  double beta_hat_var = arma::var(beta_hat); // variance of the beta_hats within the cluster
+  
+  arma::mat beta_sim = zeros<mat>(nObs, nObs);
+  double error = 0.0;
+  std::default_random_engine generator;
+  std::normal_distribution<double> distribution(0.0,beta_hat_var);
+  for(int i = 0; i < nObs - 1; i++){
+    for(int j = i; j < nObs; j++){
+      // error = distribution(generator);
+      beta_sim(i,j) = exp(-1 * (beta_hat(i) - beta_hat(j) + error) * (beta_hat(i) - beta_hat(j) + error)/(2 * beta_hat_var));
+      beta_sim(j,i) = exp(-1 * (beta_hat(i) - beta_hat(j) + error) * (beta_hat(i) - beta_hat(j) + error)/(2 * beta_hat_var));
+    }
+  }
+
+  arma::mat diag_n(nObs,nObs,fill::eye);
+  arma::mat W_beta_cl =  diag_n + beta_sim % A_block;
+  arma::mat Dinv_sqrt = arma::diagmat(1/sqrt(arma::sum(W_beta_cl, 1)));
+  arma::mat L = diag_n - Dinv_sqrt * W_beta_cl * Dinv_sqrt;
+  arma::vec eigval; // the smallest eigenvalues are the first two
+  arma::mat eigvec;
+  eig_sym(eigval, eigvec, L);
+  mat U = eigvec.cols(0,k-1);
+  U = arma::diagmat(1/sqrt(arma::sum(arma::square(U), 1))) * U;
+  arma::mat means;
+  // kmeans(means, U.t(), 2, random_subset, 10, false);
+  bool status = arma::kmeans(means, U.t(), k, random_subset, 10, false);
+  if(status == false)
+    cout << "clustering failed" << endl;
+  int * membership = which_is_nearest_k(means, U.t());
+
+  int** indices = new int*[k];
+  int* ns = new int[k];
+  for(int j = 0; j<k; j++){
+    indices[j] = new int[nObs];
+    ns[j] = 0;
+  }
+  
+  for(int i = 0; i < nObs; i++){
+    for(int j = 0; j < k; j++){
+      if(membership[i] == j){
+        indices[j][ns[j]] = i;
+        (ns[j])++;
+      }
+    }
+  }
+
+  // I probably should not use split and create a brand new function
+  // Split(cluster_id, *index1_ptr, *index2_ptr, n1, n2);
+  int orig_K = K;
+  K = k;
+  delete[] cluster_config; cluster_config = NULL;
+  for(int i = 0; i < orig_K; i++){
+    delete[] clusters[i]; clusters[i] = NULL;
+  }
+  delete[] clusters; clusters = NULL;
+  delete[] log_like; log_like = NULL;
+  delete[] log_prior; log_prior = NULL;
+  for(int i = 0; i < nObs; i++){
+    delete[] pairwise_assignment[i]; pairwise_assignment[i] = NULL;
+  }
+  delete[] pairwise_assignment; pairwise_assignment = NULL;
+
+  cluster_config = new int[K];
+  clusters = new int*[K];
+  for(int i = 0; i < K; i++){
+    cluster_config[i] = ns[i];
+    clusters[i] = new int[ns[i]];
+    for(int j = 0; j < ns[i]; j++){
+      clusters[i][j] = indices[i][j];
+    }
+  }
+  for(int i = 0; i < nObs; i++){
+    cluster_assignment[i] = membership[i];
+  }
+  get_pairwise();
+  log_like = new double[K];
+  log_prior = new double[K];
+  for(int i = 0; i < K; i++){
+    log_likelihood(i);
+    log_pi_ep(i);
+    beta_postmean(i);
+  }
+
+  delete[] membership;
+  delete[] ns;
+  for(int j = 0; j<k; j++){
+    delete[] indices[j];
+  }
+  delete[] indices;
+
+  return;
+}
+
+
 /*
 Partition::Partition(LPPartition InitialPartition){
 	nObs = InitialPartition->nObs;
