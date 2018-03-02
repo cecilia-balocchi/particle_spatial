@@ -74,6 +74,35 @@ int* which_is_nearest(arma::mat centroids, arma::mat data){
   return membership;
 }
 
+int* which_is_nearest_k(arma::mat centroids, arma::mat data){
+  // this is written for only two centroids
+  int *membership;
+  membership = new int[data.n_cols];
+  double dists [centroids.n_cols];
+  for(int point_ind = 0; point_ind < data.n_cols; point_ind++){
+    double min_val;
+    int min_cent;
+    for(int cent_ind = 0; cent_ind < centroids.n_cols; cent_ind++){
+      dists[cent_ind] = arma::norm(data.col(point_ind) - centroids.col(cent_ind));
+      if(cent_ind == 0){
+        min_cent = cent_ind;
+        min_val = dists[cent_ind];
+      } else {
+        if(dists[cent_ind] < min_val){
+          min_cent = cent_ind;
+          min_val = dists[cent_ind];
+        }
+      }
+    }
+    for(int cent_ind = 0; cent_ind < centroids.n_cols; cent_ind++){
+      if(min_cent == cent_ind){
+        membership[point_ind] = cent_ind;
+      }
+    }
+  }
+  return membership;
+}
+
 mat Distance_matrix(double* beta_hat, int nObs){
   mat dist(nObs,nObs, fill::zeros);
   for(int i = 0; i < nObs; i++)
