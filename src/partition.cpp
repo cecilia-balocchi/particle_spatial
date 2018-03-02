@@ -1042,24 +1042,26 @@ void Partition::Find_Splits(int cluster_id){
 }
 
 void Partition::K_Splits(int k){
-  arma::vec beta_hat(nObs); // an armadillo vector holding the beta-hats
+  arma::vec beta_hat_vec(nObs); // an armadillo vector holding the beta-hats
   for(int i = 0; i < nObs; i++){
-    beta_hat(i) = beta_hat[i];
+    beta_hat_vec(i) = beta_hat[i];
   }
-  double beta_hat_var = arma::var(beta_hat); // variance of the beta_hats within the cluster
+  // cout << beta_hat_vec << endl;
+  double beta_hat_var = arma::var(beta_hat_vec); // variance of the beta_hats within the cluster
   
+  // double error = 0.0;
+  // std::default_random_engine generator;
+  // std::normal_distribution<double> distribution(0.0,beta_hat_var);
   arma::mat beta_sim = zeros<mat>(nObs, nObs);
-  double error = 0.0;
-  std::default_random_engine generator;
-  std::normal_distribution<double> distribution(0.0,beta_hat_var);
   for(int i = 0; i < nObs - 1; i++){
     for(int j = i; j < nObs; j++){
       // error = distribution(generator);
-      beta_sim(i,j) = exp(-1 * (beta_hat(i) - beta_hat(j) + error) * (beta_hat(i) - beta_hat(j) + error)/(2 * beta_hat_var));
-      beta_sim(j,i) = exp(-1 * (beta_hat(i) - beta_hat(j) + error) * (beta_hat(i) - beta_hat(j) + error)/(2 * beta_hat_var));
+      // beta_sim(i,j) = exp(-1 * (beta_hat_vec(i) - beta_hat_vec(j) + error) * (beta_hat_vec(i) - beta_hat_vec(j) + error)/(2 * beta_hat_var));
+      // beta_sim(j,i) = exp(-1 * (beta_hat_vec(i) - beta_hat_vec(j) + error) * (beta_hat_vec(i) - beta_hat_vec(j) + error)/(2 * beta_hat_var));
+      beta_sim(i,j) = exp(-1 * (beta_hat_vec(i) - beta_hat_vec(j)) * (beta_hat_vec(i) - beta_hat_vec(j))/(2 * beta_hat_var));
+      beta_sim(j,i) = exp(-1 * (beta_hat_vec(i) - beta_hat_vec(j)) * (beta_hat_vec(i) - beta_hat_vec(j))/(2 * beta_hat_var));
     }
   }
-
   arma::mat diag_n(nObs,nObs,fill::eye);
   arma::mat W_beta_cl =  diag_n + beta_sim % A_block;
   arma::mat Dinv_sqrt = arma::diagmat(1/sqrt(arma::sum(W_beta_cl, 1)));
