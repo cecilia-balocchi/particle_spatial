@@ -60,6 +60,7 @@ public:
 
 
 	void Find_Splits(int cluster_id);
+	void K_Splits(int k);
 };
 
 
