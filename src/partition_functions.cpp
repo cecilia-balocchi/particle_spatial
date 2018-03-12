@@ -200,6 +200,26 @@ double  VI_Loss(LPPartition partition1, LPPartition partition2){
   }
   return loss;
 }
+
+double VI_Avg(unsigned current_l, Partition* candidate_particle, std::vector<LPPartition> particle_set){
+  unsigned L = particle_set.size();
+  double tot = 0.0;
+  double dist;
+  for(int l = 0; l < L; l++){
+    for(int ll = l+1; ll < L; ll++){
+      if(l == current_l){
+        dist = Binder_Loss(candidate_particle, particle_set[ll]);
+      } else if(ll == current_l){
+        dist = Binder_Loss(particle_set[l], candidate_particle);
+      } else{
+        dist = Binder_Loss(particle_set[l], particle_set[ll]);
+      }
+      tot = tot + dist;
+    }
+  }
+  return tot/(L*(L-1)/2);
+}
+
 double Binder_DPP(unsigned current_l, Partition* candidate_particle, std::vector<LPPartition> particle_set){
 
   // The first step is to get all of the unique particles when we replace the current_l^th particle with candidate particle
