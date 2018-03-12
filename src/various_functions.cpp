@@ -62,13 +62,29 @@ int* which_is_nearest(arma::mat centroids, arma::mat data){
   // this is written for only two centroids
   int *membership;
   membership = new int[data.n_cols];
+  int n0 = 0;
+  int n1 = 0;
   for(int point_ind = 0; point_ind < data.n_cols; point_ind++){
     double dist0 = arma::norm(data.col(point_ind) - centroids.col(0));
     double dist1 = arma::norm(data.col(point_ind) - centroids.col(1));
-    if(dist0 <= dist1){
+
+    if(dist0 < dist1){
       membership[point_ind] = 0;
-    } else {
+      n0++;
+    } else if(dist0 > dist1) {
       membership[point_ind] = 1;
+      n1++;
+    } else { // if the distance is the same
+      if(n0 == 0){
+        membership[point_ind] = 0;
+        n0++;
+      } else if (n1 ==0){
+        membership[point_ind] = 1;
+        n1++;
+      } else {
+        membership[point_ind] = 0;
+        n0++;
+      }
     }
   }
   return membership;
