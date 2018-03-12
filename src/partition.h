@@ -59,7 +59,7 @@ public:
 	void Modify(int cl_ind);
 
 
-	void Find_Splits(int cluster_id);
+	void Find_Splits(int cluster_id, int **index1, int **index2, int &n1, int &n2);
 	void K_Splits(int k);
 };
 
