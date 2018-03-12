@@ -984,62 +984,231 @@ void Partition::Modify(int cl_ind){
 
 
 
-// Eventually we can just put this inside of update_particle
-void Partition::Find_Splits(int cluster_id){
-
+void Partition::Find_Splits(int cluster_id, int **index1_ptr, int **index2_ptr, int &n1, int &n2){
   int n_cl = cluster_config[cluster_id];
   //double* beta_hat_cluster = new double[n_cl]; // we may get rid of this
   arma::mat A_block_cluster = Submatrix(A_block, n_cl, n_cl, clusters[cluster_id], clusters[cluster_id]);
   arma::mat beta_sim = zeros<mat>(n_cl, n_cl);
   arma::vec beta_hat_cluster(n_cl); // an armadillo vector holding the beta-hats
   for(int i = 0; i < n_cl; i++){
-	//beta_hat_cluster[i] = beta_hat[clusters[cluster_id][i]];
-	beta_hat_cluster(i) = beta_hat[clusters[cluster_id][i]];
+  	beta_hat_cluster(i) = beta_hat[clusters[cluster_id][i]];
   }
   double beta_hat_var = arma::var(beta_hat_cluster); // variance of the beta_hats within the cluster
   // populate the beta_similarity matrix
+  double error = 0.0;
+  std::default_random_engine generator;
+  std::normal_distribution<double> distribution(0.0,beta_hat_var);
   for(int i = 0; i < n_cl - 1; i++){
-	for(int j = i; j < n_cl; j++){
-	  beta_sim(i,j) = exp(-1 * (beta_hat_cluster(i) - beta_hat_cluster(j)) * (beta_hat_cluster(i) - beta_hat_cluster(j))/(2 * beta_hat_var));
-	  beta_sim(j,i) = exp(-1 * (beta_hat_cluster(i) - beta_hat_cluster(j)) * (beta_hat_cluster(i) - beta_hat_cluster(j))/(2 * beta_hat_var));
-	}
+  	for(int j = i; j < n_cl; j++){
+      // error = distribution(generator);
+  	  beta_sim(i,j) = exp(-1 * (beta_hat_cluster(i) - beta_hat_cluster(j) + error) * (beta_hat_cluster(i) - beta_hat_cluster(j) + error)/(2 * beta_hat_var));
+  	  beta_sim(j,i) = exp(-1 * (beta_hat_cluster(i) - beta_hat_cluster(j) + error) * (beta_hat_cluster(i) - beta_hat_cluster(j) + error)/(2 * beta_hat_var));
+  	}
   }
-  mat diag_ncl(n_cl,n_cl,fill::eye);
-  mat W_beta_cl =  diag_ncl + beta_sim % A_block_cluster;
-  mat Dinv_sqrt = arma::diagmat(1/sqrt(arma::sum(W_beta_cl, 1)));
-  mat L = diag_ncl - Dinv_sqrt * W_beta_cl * Dinv_sqrt;
-  vec eigval; // the smallest eigenvalues are the first two
-  mat eigvec;
+  arma::mat diag_ncl(n_cl,n_cl,fill::eye);
+  arma::mat W_beta_cl =  diag_ncl + beta_sim % A_block_cluster;
+  arma::mat Dinv_sqrt = arma::diagmat(1/sqrt(arma::sum(W_beta_cl, 1)));
+  arma::mat L = diag_ncl - Dinv_sqrt * W_beta_cl * Dinv_sqrt;
+  arma::vec eigval; // the smallest eigenvalues are the first two
+  arma::mat eigvec;
   eig_sym(eigval, eigvec, L);
   mat U = eigvec.cols(0,1);
   U = arma::diagmat(1/sqrt(arma::sum(arma::square(U), 1))) * U;
   arma::mat means;
   // kmeans(means, U.t(), 2, random_subset, 10, false);
-  bool status = kmeans(means, U.t(), 2, random_subset, 10, false);
+  bool status = arma::kmeans(means, U.t(), 2, random_subset, 10, false);
   if(status == false)
     cout << "clustering failed" << endl;
   int * membership = which_is_nearest(means, U.t());
-  int *index1 = new int[n_cl];
-  int *index2 = new int[n_cl];
-  int n1 = 0, n2 = 0;
+  (*index1_ptr) = new int[n_cl];
+  (*index2_ptr) = new int[n_cl];
+  n1 = 0;
+  n2 = 0;
   for(int i = 0; i < n_cl; i++){
     if(membership[i] == 0){
-      index1[n1] = clusters[cluster_id][i];
-      n1++;
+      (*index1_ptr)[n1] = clusters[cluster_id][i];
+      (n1)++;
     }
     else {
-      index2[n2] = clusters[cluster_id][i];
-       n2++;
+      (*index2_ptr)[n2] = clusters[cluster_id][i];
+      (n2)++;
      }
    }
    delete[] membership;
-   Split(cluster_id, index1, index2, n1, n2);
-   delete[] index1;
-   delete[] index2;
-
-
-
+   Split(cluster_id, *index1_ptr, *index2_ptr, n1, n2);
+   // delete[] index1;
+   // delete[] index2;
 }
+
+void Partition::K_Splits(int k){
+  arma::vec beta_hat_vec(nObs); // an armadillo vector holding the beta-hats
+  for(int i = 0; i < nObs; i++){
+    beta_hat_vec(i) = beta_hat[i];
+  }
+  // cout << beta_hat_vec << endl;
+  double beta_hat_var = arma::var(beta_hat_vec); // variance of the beta_hats within the cluster
+  
+  // double error = 0.0;
+  // std::default_random_engine generator;
+  // std::normal_distribution<double> distribution(0.0,beta_hat_var);
+  arma::mat beta_sim = zeros<mat>(nObs, nObs);
+  for(int i = 0; i < nObs - 1; i++){
+    for(int j = i; j < nObs; j++){
+      // error = distribution(generator);
+      // beta_sim(i,j) = exp(-1 * (beta_hat_vec(i) - beta_hat_vec(j) + error) * (beta_hat_vec(i) - beta_hat_vec(j) + error)/(2 * beta_hat_var));
+      // beta_sim(j,i) = exp(-1 * (beta_hat_vec(i) - beta_hat_vec(j) + error) * (beta_hat_vec(i) - beta_hat_vec(j) + error)/(2 * beta_hat_var));
+      beta_sim(i,j) = exp(-1 * (beta_hat_vec(i) - beta_hat_vec(j)) * (beta_hat_vec(i) - beta_hat_vec(j))/(2 * beta_hat_var));
+      beta_sim(j,i) = exp(-1 * (beta_hat_vec(i) - beta_hat_vec(j)) * (beta_hat_vec(i) - beta_hat_vec(j))/(2 * beta_hat_var));
+    }
+  }
+  arma::mat diag_n(nObs,nObs,fill::eye);
+  arma::mat W_beta_cl =  diag_n + beta_sim % A_block;
+  arma::mat Dinv_sqrt = arma::diagmat(1/sqrt(arma::sum(W_beta_cl, 1)));
+  arma::mat L = diag_n - Dinv_sqrt * W_beta_cl * Dinv_sqrt;
+  arma::vec eigval; // the smallest eigenvalues are the first two
+  arma::mat eigvec;
+  eig_sym(eigval, eigvec, L);
+  mat U = eigvec.cols(0,k-1);
+  U = arma::diagmat(1/sqrt(arma::sum(arma::square(U), 1))) * U;
+  arma::mat means;
+  // kmeans(means, U.t(), 2, random_subset, 10, false);
+  bool status = arma::kmeans(means, U.t(), k, random_subset, 10, false);
+  if(status == false)
+    cout << "clustering failed" << endl;
+  int * membership = which_is_nearest_k(means, U.t());
+
+  int** indices = new int*[k];
+  int* ns = new int[k];
+  for(int j = 0; j<k; j++){
+    indices[j] = new int[nObs];
+    ns[j] = 0;
+  }
+  
+  for(int i = 0; i < nObs; i++){
+    for(int j = 0; j < k; j++){
+      if(membership[i] == j){
+void Partition::K_Splits(int k){
+  arma::vec beta_hat_vec(nObs); // an armadillo vector holding the beta-hats
+  for(int i = 0; i < nObs; i++){
+    beta_hat_vec(i) = beta_hat[i];
+  }
+  // cout << beta_hat_vec << endl;
+  double beta_hat_var = arma::var(beta_hat_vec); // variance of the beta_hats within the cluster
+  
+  // double error = 0.0;
+  // std::default_random_engine generator;
+  // std::normal_distribution<double> distribution(0.0,beta_hat_var);
+  arma::mat beta_sim = zeros<mat>(nObs, nObs);
+  for(int i = 0; i < nObs - 1; i++){
+    for(int j = i; j < nObs; j++){
+      // error = distribution(generator);
+      // beta_sim(i,j) = exp(-1 * (beta_hat_vec(i) - beta_hat_vec(j) + error) * (beta_hat_vec(i) - beta_hat_vec(j) + error)/(2 * beta_hat_var));
+      // beta_sim(j,i) = exp(-1 * (beta_hat_vec(i) - beta_hat_vec(j) + error) * (beta_hat_vec(i) - beta_hat_vec(j) + error)/(2 * beta_hat_var));
+      beta_sim(i,j) = exp(-1 * (beta_hat_vec(i) - beta_hat_vec(j)) * (beta_hat_vec(i) - beta_hat_vec(j))/(2 * beta_hat_var));
+      beta_sim(j,i) = exp(-1 * (beta_hat_vec(i) - beta_hat_vec(j)) * (beta_hat_vec(i) - beta_hat_vec(j))/(2 * beta_hat_var));
+    }
+  }
+  arma::mat diag_n(nObs,nObs,fill::eye);
+  arma::mat W_beta_cl =  diag_n + beta_sim % A_block;
+  arma::mat Dinv_sqrt = arma::diagmat(1/sqrt(arma::sum(W_beta_cl, 1)));
+  arma::mat L = diag_n - Dinv_sqrt * W_beta_cl * Dinv_sqrt;
+  arma::vec eigval; // the smallest eigenvalues are the first two
+  arma::mat eigvec;
+  eig_sym(eigval, eigvec, L);
+  mat U = eigvec.cols(0,k-1);
+  U = arma::diagmat(1/sqrt(arma::sum(arma::square(U), 1))) * U;
+  arma::mat means;
+  // kmeans(means, U.t(), 2, random_subset, 10, false);
+  int** indices = new int*[k];
+  int* ns = new int[k];
+  int * membership;
+  bool FLAG = true;
+  while(FLAG){
+    bool status = arma::kmeans(means, U.t(), k, random_subset, 10, false);
+    if(status == false){
+      cout << "clustering failed" << endl;
+      // go directly to next iteration
+    } else {
+      membership = which_is_nearest_k(means, U.t());
+
+      for(int j = 0; j<k; j++){
+        indices[j] = new int[nObs];
+        ns[j] = 0;
+      }
+
+      for(int i = 0; i < nObs; i++){
+        for(int j = 0; j < k; j++){
+          if(membership[i] == j){
+            indices[j][ns[j]] = i;
+            (ns[j])++;
+          }
+        }
+      }
+
+      FLAG = false; // if not proven wrong I will end the loop
+      for(int j = 0; j < k; j++){
+        mat A_cluster = Submatrix(A_block, ns[j], ns[j], indices[j], indices[j]);
+        int *components = new int[ ns[j] ];
+        int *count = new int;
+        Connected_Components(A_cluster, ns[j],components,count);
+        if((*count)!=1){
+          FLAG = true; // I need to iterate again
+          cout << "cluster " << j <<": disconnected components, I will iterate again." << endl;
+        }
+      }
+      if(FLAG == true){
+        delete[] membership;
+      }
+    }
+  }
+
+  // I probably should not use split and create a brand new function
+  // Split(cluster_id, *index1_ptr, *index2_ptr, n1, n2);
+  int orig_K = K;
+  K = k;
+  delete[] cluster_config; cluster_config = NULL;
+  for(int i = 0; i < orig_K; i++){
+    delete[] clusters[i]; clusters[i] = NULL;
+  }
+  delete[] clusters; clusters = NULL;
+  delete[] log_like; log_like = NULL;
+  delete[] log_prior; log_prior = NULL;
+  for(int i = 0; i < nObs; i++){
+    delete[] pairwise_assignment[i]; pairwise_assignment[i] = NULL;
+  }
+  delete[] pairwise_assignment; pairwise_assignment = NULL;
+
+  cluster_config = new int[K];
+  clusters = new int*[K];
+  for(int i = 0; i < K; i++){
+    cluster_config[i] = ns[i];
+    clusters[i] = new int[ns[i]];
+    for(int j = 0; j < ns[i]; j++){
+      clusters[i][j] = indices[i][j];
+    }
+  }
+  for(int i = 0; i < nObs; i++){
+    cluster_assignment[i] = membership[i];
+  }
+  get_pairwise();
+  log_like = new double[K];
+  log_prior = new double[K];
+  for(int i = 0; i < K; i++){
+    log_likelihood(i);
+    log_pi_ep(i);
+    beta_postmean(i);
+  }
+
+  delete[] membership;
+  delete[] ns;
+  for(int j = 0; j<k; j++){
+    delete[] indices[j];
+  }
+  delete[] indices;
+
+  return;
+}
+
 
 /*
 Partition::Partition(LPPartition InitialPartition){

@@ -13,6 +13,7 @@ double total_log_like(LPPartition partition);
 double total_log_prior(LPPartition partition);
 double Binder_Loss(LPPartition partition1, LPPartition partition2);
 double VI_Loss(LPPartition partition1, LPPartition partition2);
+double VI_Avg(unsigned current_l, Partition* candidate_particle, std::vector<LPPartition> particle_set);
 
 double Binder_DPP(unsigned current_l, Partition* candidate_particle, std::vector<LPPartition> particle_set);
 double VI_DPP(unsigned current_l, Partition* candidate_particle, std::vector<LPPartition> particle_set);

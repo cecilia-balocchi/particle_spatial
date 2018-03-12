@@ -544,6 +544,31 @@ void update_particle(LPPartition candidate, int current_l, std::vector<LPPartiti
       tmp_objective = 0.0;
       // now just try splitting
       tmp_candidate->Split(k, index1, index2, n1, n2);
+      
+      // HERE is where you should comment to use the old code
+      /*
+
+      // we now know how to split cluster k
+      // first we initialize the tmp_candidate
+      cout << "Before Find_Splits, cluster " << k << endl;
+
+      delete tmp_candidate;
+      try{
+        tmp_candidate = new Partition(particle_set[current_l]);
+      }
+      catch(const std::bad_alloc& e){
+        cout << "######## EXCEPTION 9 ########"  << e.what() << endl;
+      }
+      
+      int *index1, *index2;
+      int n1, n2;
+      tmp_objective = 0.0;
+      // now just try splitting
+      tmp_candidate->Find_Splits(k, &index1, &index2, n1, n2);
+      
+      // HERE is where you should comment to use the old code
+      */
+      
       tmp_objective = w[current_l]*total_log_post(tmp_candidate) + lambda * Entropy(current_l, tmp_candidate, particle_set, w) + xi * VI_DPP(current_l, tmp_candidate, particle_set);
       if(tmp_objective > max_objective){
         delete max_candidate;
