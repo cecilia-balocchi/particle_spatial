@@ -447,47 +447,54 @@ void Partition::Print_Means(){
 // Compute the log_likelihood
 //void Partition::log_likelihood(int cluster_id, mat Y, mat X, mat A_block, double rho, double a, double b, double alpha, double nu){
 void Partition::log_likelihood(int cluster_id){
-
 	int cluster_size = cluster_config[cluster_id];
-
 	int T = Y.n_cols; // number of columns in Y
 	mat I_T(T,T);
 	I_T.eye(); // identity matrix
 	double quad_form = 0.0;
 	double numerator = 0.0;
 	double denominator = 0.0;
-    double Omega_log_det = 0;
-    double Omega_log_det_sgn = 0;
-    vec Y_vec = zeros<vec>(cluster_size*T);
-    mat X_mat = zeros<mat>(cluster_size*T, cluster_size);
-    mat Sigma_Y_k = zeros<mat>(cluster_size*T, cluster_size*T);
-    mat Omega_Y_k = zeros<mat>(cluster_size*T, cluster_size*T);
-    mat I_k(cluster_size, cluster_size);
-    I_k.eye();
+	double Omega_log_det = 0;
+	double Omega_log_det_sgn = 0;
+	vec Y_vec = zeros<vec>(cluster_size*T);
+	mat X_mat = zeros<mat>(cluster_size*T, cluster_size);
+	mat Sigma_Y_k = zeros<mat>(cluster_size*T, cluster_size*T);
+	mat Omega_Y_k = zeros<mat>(cluster_size*T, cluster_size*T);
+	mat I_k(cluster_size, cluster_size);
+	I_k.eye();
 	if(cluster_size == 1){
-	  for(int t = 0; t < T; t++){
-	    Y_vec(t) = Y(clusters[cluster_id][0],t);
-	  }
-      for(int i = 0; i < cluster_size; i++){
-    	    for(int t = 0; t < T; t++){
-    	    	  X_mat(i*T + t,i) = X(clusters[cluster_id][i],t);
+		for(int t = 0; t < T; t++){
+			Y_vec(t) = Y(clusters[cluster_id][0],t);
 		}
-      }
-      mat tXX = X_mat * X_mat.t();
+		for(int t = 0; t < T; t++){
+			X_mat(t,0) = X(clusters[cluster_id][0],t);
+		}
+		mat tXX = X_mat * X_mat.t();
 
-      Sigma_Y_k = (a/(1.0 - rho) + b) * tXX + I_T;
-      Omega_Y_k = inv_sympd(Sigma_Y_k);
+		Sigma_Y_k = (a/(1.0 - rho) + b) * tXX + I_T;
+		Omega_Y_k = inv_sympd(Sigma_Y_k);
 
-      quad_form = as_scalar(Y_vec.t() * Omega_Y_k * Y_vec);
+		quad_form = as_scalar(Y_vec.t() * Omega_Y_k * Y_vec);
 
-      Omega_log_det = 0;
-      Omega_log_det_sgn = 0;
-      log_det(Omega_log_det, Omega_log_det_sgn, Omega_Y_k);
+		Omega_log_det = 0;
+		Omega_log_det_sgn = 0;
+		log_det(Omega_log_det, Omega_log_det_sgn, Omega_Y_k);
 
-      numerator = lgamma(alpha + ( (double) cluster_size * T/2)) + alpha * log(nu);
-      denominator = lgamma(alpha) + (alpha + ( (double) cluster_size * T/2)) * log(nu + quad_form);
+		numerator = lgamma(alpha + ( (double) cluster_size * T/2)) + alpha * log(nu);
+		denominator = lgamma(alpha) + (alpha + ( (double) cluster_size * T/2)) * log(nu + quad_form);
 	} else {
-		 //
+		// i^th column contains all 0's except for entries i*T to (i+1)*T - 1
+		for(int i = 0; i < cluster_size; i++){
+			for(int j = 0; j < T; j++){
+				X_mat(i*T + j,i) = X(clusters[cluster_id][i],j);
+			}
+		}
+		for(int i = 0; i < cluster_size; i++){
+			for(int j = 0; j < T; j++){
+				Y_vec(i*T + j) = Y(clusters[cluster_id][i],j);
+			}
+		}
+
 		mat A_block_k = Submatrix(A_block, cluster_size, cluster_size, clusters[cluster_id], clusters[cluster_id]);
 		// get rowsums
 		vec row_sums = zeros<vec>(cluster_size);
@@ -496,64 +503,33 @@ void Partition::log_likelihood(int cluster_id){
 				row_sums(i) += A_block_k(i,j);
 			}
 		}
-		//std::cout << "A_block_k = " << std::endl;
-		//A_block_k.print();
 		mat D = diagmat(row_sums);
 		mat A_star_k = D - A_block_k;
-		//std::cout << "A_star_k = " << std::endl;
-		//A_star_k.print();
 		mat Sigma_star_k = rho * A_star_k;
-		//std::cout << "Sigma_star_k is temporarily" << std::endl;
-		//Sigma_star_k.print();
 		for(int i = 0; i < cluster_size; i++){
 			Sigma_star_k(i,i) += 1 - rho;
 		}
-		//Sigma_star_k.diag() += 1 - rho; // check this. It might require a % or something a bit more clever
-//		std::cout << "[log-likelihood]: Trying to invert Sigma_star_k" << std::endl;
-		//Sigma_star_k.print();
+
 		mat Omega_star_k = inv_sympd(Sigma_star_k);
-//		std::cout << "[log-likelihood]: Inverted Sigma_star_k successfully!" << std::endl;
-		mat X_mat = zeros<mat>(cluster_size*T,cluster_size); // fill this in later
-		// i^th column contains all 0's except for entries i*T to (i+1)*T - 1
-
-
-		for(int i = 0; i < cluster_size; i++){
-		  for(int j = 0; j < T; j++){
-			  X_mat(i*T + j,i) = X(clusters[cluster_id][i],j);
-		  }
-		}
-		//std::cout << "Made X_mat" << std::endl;
-
-		vec Y_vec = zeros<vec>(cluster_size*T);
-		for(int i = 0; i < cluster_size; i++){
-			for(int j = 0; j < T; j++){
-				Y_vec(i*T + j) = Y(clusters[cluster_id][i],j);
-			}
-		}
-
 		mat J = ones<mat>(cluster_size, 1);
 		mat temp = X_mat * J; // this can be simplified greatly I feel.
 		mat I_nT = zeros<mat>(cluster_size*T, cluster_size*T);
 		I_nT.eye();
 		mat Sigma_Y_k = I_nT + a * X_mat * Omega_star_k * X_mat.t() + b * temp * temp.t();
-//		std::cout << "[log-likelihood]: Trying to invert Sigma_Y_k" << std::endl;
-		mat Omega_Y_k = inv_sympd(Sigma_Y_k);
-//		std::cout << "[log_likelihood]: Successfully inverted Sigma_Y_k" << std::endl;
-		quad_form = as_scalar(Y_vec.t() * Omega_Y_k * Y_vec);
-	    Omega_log_det = 0;
-	    Omega_log_det_sgn = 0;
-	    log_det(Omega_log_det, Omega_log_det_sgn, Omega_Y_k);
 
-//	    std::cout << "alpha + cluster_size*T/2 = " << alpha + ( (double) cluster_size*T/2) << std::endl;
-//	    std::cout << "lgamma(alpha + cluster_size*T/2) = " << lgamma(alpha + ( (double) cluster_size * T/2)) << std::endl;
-	    numerator = lgamma(alpha +  ( (double) cluster_size * T/2)) + alpha * log(nu);
-	    denominator = lgamma(alpha) + (alpha + ( (double)cluster_size * T/2)) * log(nu + quad_form);
+		// mat Omega_Y_k = inv_sympd(Sigma_Y_k);
+		// quad_form = as_scalar(Y_vec.t() * Omega_Y_k * Y_vec);
+		mat Omega_Y_k_Y = solve(Sigma_Y_k, Y_vec);
+		quad_form = as_scalar(Y_vec.t() * Omega_Y_k_Y);
 
+		Omega_log_det = 0;
+		Omega_log_det_sgn = 0;
+		// log_det(Omega_log_det, Omega_log_det_sgn, Omega_Y_k);
+		log_det(Omega_log_det, Omega_log_det_sgn, Sigma_Y_k);
+
+		numerator = lgamma(alpha +  ( (double) cluster_size * T/2)) + alpha * log(nu);
+		denominator = lgamma(alpha) + (alpha + ( (double)cluster_size * T/2)) * log(nu + quad_form);
 	}
-
-//	std::cout << "Omega_log_det = " << Omega_log_det << std::endl;
-//	std::cout << "numerator = " << numerator << std::endl;
-//	std::cout << "denominator = " << denominator << std::endl;
 	log_like[cluster_id] = 0.5 * Omega_log_det + numerator - denominator;
 }
 
