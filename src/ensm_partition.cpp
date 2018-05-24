@@ -41,7 +41,7 @@ void ensm_partition(vector<LPPartition>& particle_set, double lambda, double xi)
   }  double old_objective = 0.0;
   double objective = 0.0;
 
-  objective = lambda * Entropy(0, particle_set[0], particle_set, w) + xi * VI_DPP(0, particle_set[0], particle_set);
+  objective = lambda * Entropy(0, particle_set[0], particle_set, w) + xi * VI_Avg(0, particle_set[0], particle_set);
   for(int l = 0; l < L; l++){
     objective += w[l] * total_log_post(particle_set[l]);
   }
@@ -74,7 +74,7 @@ void ensm_partition(vector<LPPartition>& particle_set, double lambda, double xi)
     update_w(particle_set, w, lambda, xi);
 
     // now compute the objective
-    objective = lambda * Entropy(0, particle_set[0], particle_set, w) + xi * VI_DPP(0, particle_set[0], particle_set); // compute the entropy
+    objective = lambda * Entropy(0, particle_set[0], particle_set, w) + xi * VI_Avg(0, particle_set[0], particle_set); // compute the entropy
     for(int l = 0; l < L; l++){
       objective += w[l] * total_log_post(particle_set[l]);
     }
