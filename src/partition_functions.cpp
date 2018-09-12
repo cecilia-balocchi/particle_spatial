@@ -108,9 +108,13 @@ double Entropy(unsigned current_l, Partition* candidate_particle, std::vector<LP
   }
   double entropy = 0.0;
   //std::cout << "p_star = " ;
+  double test;
   for(unsigned ul = 0; ul < num_unik_particles; ul++){
-	  //std::cout << p_star[ul] << " " ;
-	  entropy += p_star[ul] * log(p_star[ul]);
+	  test = p_star[ul] * log(p_star[ul]);
+    if(!isnan(test)){
+      entropy += test;
+    }
+	  // entropy += p_star[ul] * log(p_star[ul]);
   }
   //std::cout << std::endl;
   return -1.0 * entropy;
